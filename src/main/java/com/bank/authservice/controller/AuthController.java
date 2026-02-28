@@ -1,6 +1,7 @@
 package com.bank.authservice.controller;
 
 import com.bank.authservice.dto.AuthResponse;
+import com.bank.authservice.dto.LoginRequest;
 import com.bank.authservice.dto.RegisterRequest;
 import com.bank.authservice.service.AuthService;
 import jakarta.validation.Valid;
@@ -26,5 +27,12 @@ public class AuthController {
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
         // HTTP 201 Created — standard pour une création de ressource
         // En fintech on respecte strictement les codes HTTP
+    }
+
+    @PostMapping("/login")
+    public ResponseEntity<AuthResponse> login(
+            @Valid @RequestBody LoginRequest request){
+        AuthResponse response = authService.login(request);
+        return ResponseEntity.ok(response);
     }
 }

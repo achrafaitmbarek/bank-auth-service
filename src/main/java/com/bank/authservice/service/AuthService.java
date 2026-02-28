@@ -4,6 +4,7 @@ import com.bank.authservice.config.JwtService;
 import com.bank.authservice.domain.Role;
 import com.bank.authservice.domain.User;
 import com.bank.authservice.dto.AuthResponse;
+import com.bank.authservice.dto.LoginRequest;
 import com.bank.authservice.dto.RegisterRequest;
 import com.bank.authservice.exception.ApiException;
 import com.bank.authservice.repository.UserRepository;
@@ -46,6 +47,38 @@ public class AuthService {
         String token = jwtService.generateToken(user.getEmail(), user.getRole().name());
 
         // Étape 5 — Retourner la réponse
+        return AuthResponse.builder()
+                .token(token)
+                .email(user.getEmail())
+                .role(user.getRole().name())
+                .build();
+    }
+
+    public AuthResponse login(LoginRequest request) {
+
+        // Étape 1 — Cherche l'utilisateur par email
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new ApiException(
+                        "Invalid credentials",
+                        HttpStatus.UNAUTHORIZED
+                ));
+        // Si l'email n'existe pas → 401
+        // Message volontairement vague — on ne révèle pas que c'est l'email qui est incorrect
+
+        // Étape 2 — Vérifie le mot de passe
+        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+            throw new ApiException("Invalid credentials", HttpStatus.UNAUTHORIZED);
+            // passwordEncoder.matches() compare :
+            // "secret123" (ce que l'utilisateur envoie)
+            // "$2a$10$xyz..." (le hash stocké en BDD)
+            // Si ça ne correspond pas → 401
+            // Même message que l'email incorrect — l'attaquant ne sait pas lequel est faux
+        }
+
+        // Étape 3 — Génère le token JWT
+        String token = jwtService.generateToken(user.getEmail(), user.getRole().name());
+
+        // Étape 4 — Retourne la réponse
         return AuthResponse.builder()
                 .token(token)
                 .email(user.getEmail())
