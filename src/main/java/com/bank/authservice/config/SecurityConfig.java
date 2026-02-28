@@ -1,5 +1,7 @@
 package com.bank.authservice.config;
 
+import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -9,30 +11,38 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
-@Configuration   // Dit à Spring : cette classe contient des configurations
+@Configuration
 @EnableWebSecurity
+@RequiredArgsConstructor
 public class SecurityConfig {
+
+    private final JwtAuthFilter jwtAuthFilter;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
-                // Désactive CSRF — inutile pour une API REST stateless avec JWT
-                // CSRF protège les formulaires HTML, pas les APIs
-
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                // STATELESS = pas de session serveur
-                // Chaque requête porte son JWT — le serveur ne mémorise rien
-                // C'est le standard pour les APIs en microservices
-
                 .authorizeHttpRequests(auth -> auth
-                                .requestMatchers("/api/auth/**").permitAll()
-                                // Les routes d'auth sont publiques — pas besoin de token pour s'inscrire
-                                .anyRequest().authenticated()
-                        // Toutes les autres routes nécessitent un JWT valide
-                );
+                        .requestMatchers("/api/auth/**").permitAll()
+                        .anyRequest().authenticated()
+                )
+                .exceptionHandling(exception -> exception
+                        .authenticationEntryPoint((request, response, authException) -> {
+                            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                            response.setContentType("application/json");
+                            response.getWriter().write(
+                                    "{\"status\":401,\"message\":\"Unauthorized - Token missing or invalid\"}"
+                            );
+                        })
+                )
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+        // Ajoute notre filtre AVANT le filtre d'auth par défaut de Spring
+        // Comme ça notre JWT est vérifié en premier
+
         return http.build();
     }
 
