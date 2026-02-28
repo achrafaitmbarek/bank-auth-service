@@ -43,4 +43,13 @@ public class AuthController {
         AuthResponse response = authService.refreshToken(request.getRefreshToken());
         return ResponseEntity.ok(response);
     }
+
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(
+            @Valid @RequestBody RefreshTokenRequest request) {
+        authService.logout(request.getRefreshToken());
+        return ResponseEntity.noContent().build();
+        // HTTP 204 No Content — succès sans body
+        // Standard pour les opérations qui ne retournent rien
+    }
 }
