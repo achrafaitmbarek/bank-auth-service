@@ -1,6 +1,5 @@
 package com.bank.authservice.service;
 
-import com.bank.authservice.config.JwtService;
 import com.bank.authservice.domain.Role;
 import com.bank.authservice.domain.User;
 import com.bank.authservice.dto.AuthResponse;
