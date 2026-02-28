@@ -104,4 +104,17 @@ public class AuthService {
                 .role(user.getRole().name())
                 .build();
     }
+
+    @Transactional
+    public void logout(String refreshTokenValue) {
+        RefreshToken refreshToken = refreshTokenRepository
+                .findByToken(refreshTokenValue)
+                .orElseThrow(() -> new ApiException(
+                        "Invalid refresh token", HttpStatus.UNAUTHORIZED));
+
+        refreshToken.setRevoked(true);
+        refreshTokenRepository.save(refreshToken);
+        // Le refresh token est révoqué
+        // L'utilisateur ne pourra plus obtenir de nouvel access token
+    }
 }
