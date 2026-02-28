@@ -1,85 +1,105 @@
 package com.bank.authservice.service;
 
+import com.bank.authservice.config.JwtAuthFilter;
+import com.bank.authservice.domain.RefreshToken;
 import com.bank.authservice.domain.Role;
 import com.bank.authservice.domain.User;
 import com.bank.authservice.dto.AuthResponse;
 import com.bank.authservice.dto.LoginRequest;
 import com.bank.authservice.dto.RegisterRequest;
 import com.bank.authservice.exception.ApiException;
+import com.bank.authservice.repository.RefreshTokenRepository;
 import com.bank.authservice.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
 
 @Service
-@RequiredArgsConstructor   // Lombok génère un constructeur avec tous les attributs final
-// C'est la façon recommandée de faire l'injection de dépendances
+@RequiredArgsConstructor
 public class AuthService {
 
-    private final UserRepository userRepository;   // final = obligatoire dans le constructeur
-    private final PasswordEncoder passwordEncoder; // pour hasher les mots de passe
-    private final JwtService jwtService;           // pour générer les tokens JWT
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final JwtService jwtService;
+    private final RefreshTokenRepository refreshTokenRepository;
 
+    @Transactional
     public AuthResponse register(RegisterRequest request) {
-
-        // Étape 1 — Vérifier si l'email existe déjà
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new ApiException("Email already registered", HttpStatus.CONFLICT);
         }
 
-        // Étape 2 — Construire l'utilisateur
         User user = User.builder()
                 .email(request.getEmail())
                 .password(passwordEncoder.encode(request.getPassword()))
-                // encode() transforme "secret123" en "$2a$10$xyz..."
-                // BCrypt — algorithme standard en fintech, irréversible
                 .role(Role.USER)
-                // Toujours USER — jamais le client ne choisit son rôle
                 .build();
 
-        // Étape 3 — Sauvegarder en BDD
         userRepository.save(user);
-        // Hibernate génère : INSERT INTO users (email, password, role) VALUES (?, ?, ?)
 
-        // Étape 4 — Générer le token JWT
         String token = jwtService.generateToken(user.getEmail(), user.getRole().name());
+        RefreshToken refreshToken = jwtService.generateRefreshToken(user);
 
-        // Étape 5 — Retourner la réponse
         return AuthResponse.builder()
                 .token(token)
+                .refreshToken(refreshToken.getToken())
                 .email(user.getEmail())
                 .role(user.getRole().name())
                 .build();
     }
 
+    @Transactional
     public AuthResponse login(LoginRequest request) {
-
-        // Étape 1 — Cherche l'utilisateur par email
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new ApiException(
-                        "Invalid credentials",
-                        HttpStatus.UNAUTHORIZED
-                ));
-        // Si l'email n'existe pas → 401
-        // Message volontairement vague — on ne révèle pas que c'est l'email qui est incorrect
+                        "Invalid credentials", HttpStatus.UNAUTHORIZED));
 
-        // Étape 2 — Vérifie le mot de passe
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
             throw new ApiException("Invalid credentials", HttpStatus.UNAUTHORIZED);
-            // passwordEncoder.matches() compare :
-            // "secret123" (ce que l'utilisateur envoie)
-            // "$2a$10$xyz..." (le hash stocké en BDD)
-            // Si ça ne correspond pas → 401
-            // Même message que l'email incorrect — l'attaquant ne sait pas lequel est faux
         }
 
-        // Étape 3 — Génère le token JWT
         String token = jwtService.generateToken(user.getEmail(), user.getRole().name());
+        RefreshToken refreshToken = jwtService.generateRefreshToken(user);
 
-        // Étape 4 — Retourne la réponse
         return AuthResponse.builder()
                 .token(token)
+                .refreshToken(refreshToken.getToken())
+                .email(user.getEmail())
+                .role(user.getRole().name())
+                .build();
+    }
+
+    // Génère un nouvel Access Token depuis un Refresh Token valide
+    public AuthResponse refreshToken(String refreshTokenValue) {
+
+        // Cherche le refresh token en BDD
+        RefreshToken refreshToken = refreshTokenRepository
+                .findByToken(refreshTokenValue)
+                .orElseThrow(() -> new ApiException(
+                        "Invalid refresh token", HttpStatus.UNAUTHORIZED));
+
+        // Vérifie qu'il n'est pas révoqué
+        if (refreshToken.isRevoked()) {
+            throw new ApiException("Refresh token has been revoked", HttpStatus.UNAUTHORIZED);
+        }
+
+        // Vérifie qu'il n'est pas expiré
+        if (refreshToken.getExpiresAt().isBefore(LocalDateTime.now())) {
+            throw new ApiException("Refresh token has expired", HttpStatus.UNAUTHORIZED);
+        }
+
+        // Génère un nouvel Access Token
+        User user = refreshToken.getUser();
+        String newToken = jwtService.generateToken(user.getEmail(), user.getRole().name());
+
+        return AuthResponse.builder()
+                .token(newToken)
+                .refreshToken(refreshToken.getToken())
+                // On retourne le même refresh token — pas besoin d'en générer un nouveau
                 .email(user.getEmail())
                 .role(user.getRole().name())
                 .build();

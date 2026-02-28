@@ -10,6 +10,7 @@ import lombok.Getter;
 public class AuthResponse {
 
     private String token;   // Le JWT token que le client va stocker
+    private String refreshToken;
     private String email;   // Confirmation de l'email enregistré
     private String role;    // Le rôle assigné ("USER" ou "ADMIN")
 }
