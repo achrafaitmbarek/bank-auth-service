@@ -2,6 +2,7 @@ package com.bank.authservice.controller;
 
 import com.bank.authservice.dto.AuthResponse;
 import com.bank.authservice.dto.LoginRequest;
+import com.bank.authservice.dto.RefreshTokenRequest;
 import com.bank.authservice.dto.RegisterRequest;
 import com.bank.authservice.service.AuthService;
 import jakarta.validation.Valid;
@@ -33,6 +34,13 @@ public class AuthController {
     public ResponseEntity<AuthResponse> login(
             @Valid @RequestBody LoginRequest request){
         AuthResponse response = authService.login(request);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<AuthResponse> refresh(
+            @Valid @RequestBody RefreshTokenRequest request){
+        AuthResponse response = authService.refreshToken(request.getRefreshToken());
         return ResponseEntity.ok(response);
     }
 }

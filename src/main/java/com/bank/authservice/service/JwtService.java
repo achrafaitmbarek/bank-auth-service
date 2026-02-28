@@ -1,15 +1,24 @@
 package com.bank.authservice.service;
 
+import com.bank.authservice.domain.RefreshToken;
+import com.bank.authservice.domain.User;
+import com.bank.authservice.repository.RefreshTokenRepository;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import javax.crypto.SecretKey;
+import java.time.LocalDateTime;
 import java.util.Date;
+import java.util.UUID;
 
 @Service
+@RequiredArgsConstructor
 public class JwtService {
+
+    private final RefreshTokenRepository refreshTokenRepository;
 
     @Value("${jwt.secret}")
     private String secretKey;
@@ -17,7 +26,10 @@ public class JwtService {
     @Value("${jwt.expiration}")
     private long expiration;
 
-    // Génère un token — déjà existant
+    @Value("${jwt.refresh-expiration}")
+    private long refreshExpiration;
+
+    // Access Token — courte durée
     public String generateToken(String email, String role) {
         return Jwts.builder()
                 .subject(email)
@@ -28,40 +40,48 @@ public class JwtService {
                 .compact();
     }
 
-    // Extrait l'email depuis le token
+    // Refresh Token — longue durée, stocké en BDD
+    public RefreshToken generateRefreshToken(User user) {
+
+        // Révoque tous les anciens refresh tokens du user
+        refreshTokenRepository.revokeAllUserTokens(user.getId());
+        // Un user = un seul refresh token valide à la fois
+        // Si l'utilisateur se reconnecte, l'ancien token est révoqué
+
+        RefreshToken refreshToken = RefreshToken.builder()
+                .token(UUID.randomUUID().toString())
+                // UUID = identifiant unique aléatoire
+                // "a3f5c2d1-4b6e-..." — impossible à deviner
+                .user(user)
+                .expiresAt(LocalDateTime.now().plusSeconds(refreshExpiration / 1000))
+                .revoked(false)
+                .build();
+
+        return refreshTokenRepository.save(refreshToken);
+    }
+
     public String extractEmail(String token) {
         return extractAllClaims(token).getSubject();
-        // Le subject c'est l'email qu'on a mis dans generateToken()
     }
 
-    // Extrait le rôle depuis le token
     public String extractRole(String token) {
         return extractAllClaims(token).get("role", String.class);
-        // "role" c'est le claim custom qu'on a mis dans generateToken()
     }
 
-    // Vérifie si le token est valide et non expiré
     public boolean isTokenValid(String token) {
         try {
-            return !extractAllClaims(token)
-                    .getExpiration()
-                    .before(new Date());
-            // before(new Date()) = est-ce que la date d'expiration est passée ?
-            // Si oui → token expiré → false
+            return !extractAllClaims(token).getExpiration().before(new Date());
         } catch (Exception e) {
             return false;
-            // Si le token est malformé ou la signature invalide
-            // Jwts.parser() lance une exception — on retourne false
         }
     }
 
-    // Extrait tous les claims du token — méthode privée utilitaire
     private Claims extractAllClaims(String token) {
         return Jwts.parser()
-                .verifyWith(getSigningKey())  // Vérifie la signature
+                .verifyWith(getSigningKey())
                 .build()
                 .parseSignedClaims(token)
-                .getPayload();               // Retourne le contenu du token
+                .getPayload();
     }
 
     private SecretKey getSigningKey() {

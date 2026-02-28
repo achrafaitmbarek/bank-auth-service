@@ -38,6 +38,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiError> handleGenericException(Exception ex) {
+        ex.printStackTrace();
         ApiError error = ApiError.builder()
                 .status(500)
                 .message("An internal error occurred")
