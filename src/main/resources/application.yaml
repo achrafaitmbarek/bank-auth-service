@@ -23,3 +23,12 @@ jwt:
   secret: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
   expiration: ${JWT_EXPIRATION:3600000}
   refresh-expiration: ${JWT_REFRESH_EXPIRATION:604800000}
+
+logging:
+   level:
+     root: INFO
+     com.bank.auth_service: DEBUG
+     org.hibernate.SQL: DEBUG
+   pattern:
+     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+     # Format : date [thread] LEVEL classe - message

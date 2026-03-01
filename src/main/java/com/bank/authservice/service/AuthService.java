@@ -11,6 +11,7 @@ import com.bank.authservice.exception.ApiException;
 import com.bank.authservice.repository.RefreshTokenRepository;
 import com.bank.authservice.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -18,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthService {
@@ -29,7 +31,11 @@ public class AuthService {
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
+        log.info("Register attempt for email: {}", request.getEmail());
+        // {} = placeholder — jamais de concaténation dans les logs
+        // "email: " + email est dangereux → "email: {}" est safe et performant
         if (userRepository.existsByEmail(request.getEmail())) {
+            log.warn("Register failed - email already exists: {}", request.getEmail());
             throw new ApiException("Email already registered", HttpStatus.CONFLICT);
         }
 
@@ -40,6 +46,7 @@ public class AuthService {
                 .build();
 
         userRepository.save(user);
+        log.info("User registered successfully: {}", user.getEmail());
 
         String token = jwtService.generateToken(user.getEmail(), user.getRole().name());
         RefreshToken refreshToken = jwtService.generateRefreshToken(user);
@@ -54,16 +61,21 @@ public class AuthService {
 
     @Transactional
     public AuthResponse login(LoginRequest request) {
+        log.info("Login attempt for email: {}", request.getEmail());
+
         User user = userRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new ApiException(
-                        "Invalid credentials", HttpStatus.UNAUTHORIZED));
+                .orElseThrow(() -> {
+                        log.warn("Login failed - email not found: {}", request.getEmail());
+                        return new ApiException("Invalid credentials", HttpStatus.UNAUTHORIZED);});
 
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+            log.warn("Login failed - wrong password for email: {}", request.getEmail());
             throw new ApiException("Invalid credentials", HttpStatus.UNAUTHORIZED);
         }
 
         String token = jwtService.generateToken(user.getEmail(), user.getRole().name());
         RefreshToken refreshToken = jwtService.generateRefreshToken(user);
+        log.info("Login successful for email: {}", user.getEmail());
 
         return AuthResponse.builder()
                 .token(token)
@@ -73,28 +85,36 @@ public class AuthService {
                 .build();
     }
 
-    // Génère un nouvel Access Token depuis un Refresh Token valide
+    @Transactional
     public AuthResponse refreshToken(String refreshTokenValue) {
+        log.info("Refresh token attempt");
 
         // Cherche le refresh token en BDD
         RefreshToken refreshToken = refreshTokenRepository
                 .findByToken(refreshTokenValue)
-                .orElseThrow(() -> new ApiException(
-                        "Invalid refresh token", HttpStatus.UNAUTHORIZED));
+                .orElseThrow(() -> {
+                    log.warn("Refresh failed - token not found");
+                    return new ApiException("Invalid refresh token", HttpStatus.UNAUTHORIZED);
+                });
+
 
         // Vérifie qu'il n'est pas révoqué
         if (refreshToken.isRevoked()) {
+            log.warn("Refresh failed - token already revoked for user: {}",
+                    refreshToken.getUser().getEmail());
             throw new ApiException("Refresh token has been revoked", HttpStatus.UNAUTHORIZED);
         }
 
-        // Vérifie qu'il n'est pas expiré
         if (refreshToken.getExpiresAt().isBefore(LocalDateTime.now())) {
+            log.warn("Refresh failed - token expired for user: {}",
+                    refreshToken.getUser().getEmail());
             throw new ApiException("Refresh token has expired", HttpStatus.UNAUTHORIZED);
         }
 
         // Génère un nouvel Access Token
         User user = refreshToken.getUser();
         String newToken = jwtService.generateToken(user.getEmail(), user.getRole().name());
+        log.info("Access token refreshed for user: {}", user.getEmail());
 
         return AuthResponse.builder()
                 .token(newToken)
@@ -109,12 +129,13 @@ public class AuthService {
     public void logout(String refreshTokenValue) {
         RefreshToken refreshToken = refreshTokenRepository
                 .findByToken(refreshTokenValue)
-                .orElseThrow(() -> new ApiException(
-                        "Invalid refresh token", HttpStatus.UNAUTHORIZED));
+                .orElseThrow(() -> {
+                    log.warn("Logout failed - token not found");
+                    return new ApiException("Invalid refresh token", HttpStatus.UNAUTHORIZED);
+                });
 
         refreshToken.setRevoked(true);
         refreshTokenRepository.save(refreshToken);
-        // Le refresh token est révoqué
-        // L'utilisateur ne pourra plus obtenir de nouvel access token
+        log.info("User logged out: {}", refreshToken.getUser().getEmail());
     }
 }
