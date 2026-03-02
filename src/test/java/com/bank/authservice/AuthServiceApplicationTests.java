@@ -1,4 +1,4 @@
-package com.bank.auth_service;
+package com.bank.authservice;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;

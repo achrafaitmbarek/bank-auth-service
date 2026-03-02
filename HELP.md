@@ -1,7 +1,7 @@
 # Read Me First
 The following was discovered as part of building this project:
 
-* The original package name 'com.bank.auth-service' is invalid and this project uses 'com.bank.auth_service' instead.
+* The original package name 'com.bank.auth-service' is invalid and this project uses 'com.bank.authservice' instead.
 
 # Getting Started
 
