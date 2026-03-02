@@ -1,93 +1,414 @@
-# bank-auth-service
+# 🔐 Auth Service — Banking-Grade Authentication Microservice
 
+> A production-ready JWT authentication microservice built with Spring Boot, following the architecture and standards used in French banking and fintech environments.
 
+![Java](https://img.shields.io/badge/Java-21-orange?logo=openjdk)
+![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.0.3-brightgreen?logo=spring)
+![Spring Security](https://img.shields.io/badge/Spring%20Security-7.x-brightgreen?logo=springsecurity)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue?logo=postgresql)
+![Docker](https://img.shields.io/badge/Docker-Compose-blue?logo=docker)
+![License](https://img.shields.io/badge/License-MIT-lightgrey)
 
-## Getting started
+---
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+## 📌 Overview
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+This service handles the full authentication lifecycle for a banking platform:
 
-## Add your files
+- **User registration** with BCrypt password hashing
+- **JWT-based login** (short-lived access token + long-lived refresh token)
+- **Token refresh** with single-use revocation strategy
+- **Secure logout** that invalidates the refresh token server-side
+- **Rate limiting** to protect against brute-force attacks
+- **Role-based access control** (USER / ADMIN)
 
-* [Create](https://docs.gitlab.com/user/project/repository/web_editor/#create-a-file) or [upload](https://docs.gitlab.com/user/project/repository/web_editor/#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+Built to reflect real-world constraints in regulated environments: no data leaks via DTOs, full transaction integrity via `@Transactional`, structured logging, and externalized secrets.
+
+---
+
+## 🏗️ Architecture
 
 ```
-cd existing_repo
-git remote add origin https://gitlab.com/achrafaitmbarek/bank-auth-service.git
-git branch -M main
-git push -uf origin main
+┌─────────────────────────────────────────────────────────┐
+│                        CLIENT                           │
+│              (Postman / Frontend / Mobile)              │
+└───────────────────────────┬─────────────────────────────┘
+                            │ HTTPS
+                            ▼
+┌─────────────────────────────────────────────────────────┐
+│               SPRING SECURITY FILTER CHAIN              │
+│                                                         │
+│  1. RateLimitFilter   → 5 req/min per IP (Bucket4j)     │
+│  2. JwtAuthFilter     → validates Bearer token          │
+│  3. SecurityConfig    → route-level access rules        │
+└───────────────────────────┬─────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────┐
+│                    CONTROLLER LAYER                     │
+│         AuthController  │  UserController               │
+│    (no business logic — only HTTP handling)             │
+└───────────────────────────┬─────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────┐
+│                     SERVICE LAYER                       │
+│          AuthService         │  JwtService              │
+│   (all business decisions — @Transactional)             │
+└───────────────────────────┬─────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────┐
+│                   REPOSITORY LAYER                      │
+│       UserRepository  │  RefreshTokenRepository         │
+│            (Spring Data JPA — no raw SQL)               │
+└───────────────────────────┬─────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────┐
+│                  PostgreSQL (Docker)                    │
+│              users  │  refresh_tokens                   │
+└─────────────────────────────────────────────────────────┘
 ```
 
-## Integrate with your tools
+---
 
-* [Set up project integrations](https://gitlab.com/achrafaitmbarek/bank-auth-service/-/settings/integrations)
+## 🛠️ Tech Stack
 
-## Collaborate with your team
+| Layer | Technology | Why |
+|---|---|---|
+| Framework | Spring Boot 4.0.3 | Standard in enterprise Java environments |
+| Security | Spring Security 7.x | Industry-standard auth framework |
+| JWT | jjwt 0.12.3 | Most widely used JWT library for Java |
+| Database | PostgreSQL 16 | ACID-compliant, used extensively in fintech |
+| ORM | Spring Data JPA + Hibernate 7 | Abstracts SQL, prevents injection |
+| Rate Limiting | Bucket4j 8.10.1 | Token-bucket algorithm, used in production APIs |
+| Documentation | SpringDoc OpenAPI 2.8.6 | Auto-generates Swagger UI |
+| Password Hashing | BCrypt | Adaptive hashing with configurable cost factor |
+| Testing | JUnit 5 + Mockito | Standard Java testing stack |
+| Infrastructure | Docker + Compose | Portable, reproducible local environment |
+| Build | Maven | Standard in Java enterprise projects |
 
-* [Invite team members and collaborators](https://docs.gitlab.com/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/user/project/merge_requests/creating_merge_requests/)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/user/project/issues/managing_issues/#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+---
 
-## Test and Deploy
+## 📁 Project Structure
 
-Use the built-in continuous integration in GitLab.
+```
+src/main/java/com/bank/authservice/
+│
+├── AuthServiceApplication.java       ← Entry point (@SpringBootApplication)
+│
+├── controller/
+│   ├── AuthController.java           ← Public auth routes
+│   └── UserController.java           ← Protected user routes
+│
+├── service/
+│   ├── AuthService.java              ← Business logic (@Transactional)
+│   └── JwtService.java               ← Token generation & validation
+│
+├── repository/
+│   ├── UserRepository.java           ← User queries (JPA)
+│   └── RefreshTokenRepository.java   ← Token revocation queries
+│
+├── domain/
+│   ├── User.java                     ← @Entity — users table
+│   ├── Role.java                     ← Enum: USER | ADMIN
+│   └── RefreshToken.java             ← @Entity — refresh_tokens table
+│
+├── dto/
+│   ├── RegisterRequest.java          ← Input validation (@NotBlank, @Email)
+│   ├── LoginRequest.java
+│   ├── RefreshTokenRequest.java
+│   └── AuthResponse.java             ← Response — never expose domain entities
+│
+├── config/
+│   ├── SecurityConfig.java           ← Filter chain, route access rules
+│   ├── JwtAuthFilter.java            ← Validates JWT on every request
+│   ├── RateLimitFilter.java          ← IP-based rate limiting
+│   └── SwaggerConfig.java            ← OpenAPI / Bearer auth UI
+│
+└── exception/
+    ├── ApiException.java             ← Custom RuntimeException with HttpStatus
+    ├── ApiError.java                 ← Structured error response body
+    └── GlobalExceptionHandler.java   ← @RestControllerAdvice — centralized errors
+```
 
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/topics/autodevops/requirements/)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ci/environments/protected_environments/)
+---
 
-***
+## 🔌 API Endpoints
 
-# Editing this README
+### Public Routes
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+#### `POST /api/auth/register`
+Register a new user.
 
-## Suggestions for a good README
+**Request:**
+```json
+{
+  "email": "ashraf@bank.com",
+  "password": "SecurePass123",
+  "firstName": "Ashraf",
+  "lastName": "Eloken"
+}
+```
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+**Response `201 Created`:**
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiJ9...",
+  "refreshToken": "550e8400-e29b-41d4-a716-446655440000",
+  "email": "ashraf@bank.com",
+  "role": "USER"
+}
+```
 
-## Name
-Choose a self-explaining name for your project.
+**Errors:** `409 Conflict` (email already exists), `400 Bad Request` (validation failed)
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+---
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+#### `POST /api/auth/login`
+Authenticate with credentials.
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+**Request:**
+```json
+{
+  "email": "ashraf@bank.com",
+  "password": "SecurePass123"
+}
+```
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+**Response `200 OK`:**
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiJ9...",
+  "refreshToken": "550e8400-e29b-41d4-a716-446655440000",
+  "email": "ashraf@bank.com",
+  "role": "USER"
+}
+```
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+**Errors:** `401 Unauthorized` (invalid credentials)
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+---
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+#### `POST /api/auth/refresh`
+Get a new access token using a valid refresh token.
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+**Request:**
+```json
+{
+  "refreshToken": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+**Response `200 OK`:**
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiJ9...",
+  "refreshToken": "new-uuid-here",
+  "email": "ashraf@bank.com",
+  "role": "USER"
+}
+```
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+**Errors:** `401 Unauthorized` (expired, revoked, or invalid refresh token)
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+---
 
-## License
-For open source projects, say how it is licensed.
+#### `POST /api/auth/logout`
+Revoke the current refresh token.
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+**Request:**
+```json
+{
+  "refreshToken": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+**Response `204 No Content`**
+
+---
+
+### Protected Routes
+
+> All protected routes require: `Authorization: Bearer <access_token>`
+
+#### `GET /api/user/me`
+Returns the authenticated user's info.
+
+**Response `200 OK`:**
+```json
+{
+  "email": "ashraf@bank.com"
+}
+```
+
+**Errors:** `401 Unauthorized` (missing or invalid token)
+
+---
+
+## 🔒 Security Design
+
+### Two-Token Strategy
+
+```
+ACCESS TOKEN (JWT)
+  ├── Lifespan: 15 minutes
+  ├── Storage: Client memory (never localStorage)
+  ├── Signed with: HMAC-SHA256 (HS256)
+  ├── Contains: email, role, iat, exp
+  └── Stateless — server doesn't store it
+
+REFRESH TOKEN (UUID)
+  ├── Lifespan: 7 days
+  ├── Storage: PostgreSQL (refresh_tokens table)
+  ├── Revocable: revoked=true flag on logout
+  └── Single-use: rotated on each /refresh call
+```
+
+### Why DTOs are mandatory in fintech
+
+Direct entity exposure allows clients to inject `role: "ADMIN"` or `id: 1` fields. DTOs act as a strict contract — only the fields we explicitly define can enter or leave the system.
+
+### Rate Limiting
+
+5 requests per minute per IP address on all `/api/auth/**` routes. Uses the token-bucket algorithm (Bucket4j). Excess requests return `429 Too Many Requests`.
+
+### Password Storage
+
+BCrypt with Spring Security's default cost factor (10 rounds). Passwords are never stored in plain text or logged.
+
+---
+
+## 🚀 Run Locally
+
+### Prerequisites
+
+- Java 21+
+- Maven 3.9+
+- Docker + Docker Compose
+
+### 1. Clone the repository
+
+```bash
+git clone git@gitlab.com:achrafaitmbarek/auth-service.git
+cd auth-service
+```
+
+### 2. Configure environment variables
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` with your values:
+
+```env
+JWT_SECRET=your-256-bit-secret-key-here-minimum-32-chars
+JWT_EXPIRATION=900000
+REFRESH_TOKEN_EXPIRATION=604800000
+DB_URL=jdbc:postgresql://localhost:5432/authdb
+DB_USERNAME=authuser
+DB_PASSWORD=your-db-password
+```
+
+### 3. Start the database
+
+```bash
+docker-compose up -d
+```
+
+### 4. Run the application
+
+```bash
+./mvnw spring-boot:run
+```
+
+The API will be available at `http://localhost:8080`.
+
+Swagger UI: [http://localhost:8080/swagger-ui/index.html](http://localhost:8080/swagger-ui/index.html)
+
+---
+
+## 🧪 Running Tests
+
+```bash
+./mvnw test
+```
+
+Current test coverage:
+
+| Test | Description |
+|---|---|
+| `register_success` | Creates user, returns 201 with tokens |
+| `register_duplicateEmail_throwsConflict` | Returns 409 if email already exists |
+| `login_success` | Valid credentials return access + refresh token |
+| `login_emailNotFound_throwsUnauthorized` | Returns 401 if email doesn't exist |
+| `login_wrongPassword_throwsUnauthorized` | Returns 401 if password doesn't match |
+| `logout_success` | Revokes refresh token for valid user |
+| `logout_userNotFound_throwsUnauthorized` | Returns 401 if user doesn't exist |
+
+All tests use JUnit 5 + Mockito — no database required (pure unit tests with mocked repositories).
+
+---
+
+## 🎨 Design Patterns Used
+
+| Pattern | Where | Why |
+|---|---|---|
+| **Repository Pattern** | `UserRepository`, `RefreshTokenRepository` | Decouples business logic from database access |
+| **DTO Pattern** | `RegisterRequest`, `AuthResponse`, etc. | Prevents entity exposure, enforces API contract |
+| **Builder Pattern** | `AuthResponse`, `ApiError` | Readable object construction, avoids telescoping constructors |
+| **Chain of Responsibility** | Spring Security Filter Chain | Each filter handles one concern and passes to the next |
+| **Strategy Pattern** | `UserDetailsService` implementation | Swappable auth strategies without changing the filter |
+| **Singleton Pattern** | All Spring `@Bean` / `@Service` / `@Component` | One instance per application context |
+| **Template Method** | `OncePerRequestFilter` | Base class defines the algorithm, subclass fills the details |
+
+---
+
+## 🌿 Git Workflow
+
+This project follows **Gitflow**:
+
+```
+main          ← production-ready code only
+  └── develop ← integration branch
+        ├── feature/AUTH-01-project-setup
+        ├── feature/AUTH-02-entities-and-repositories
+        ├── feature/AUTH-03-jwt-service
+        ├── feature/AUTH-04-auth-service
+        ├── feature/AUTH-05-security-config
+        ├── feature/AUTH-06-auth-controller
+        ├── feature/AUTH-07-protected-routes
+        ├── feature/AUTH-08-global-exception-handler
+        ├── feature/AUTH-09-swagger-openapi
+        ├── feature/AUTH-10-rate-limiting
+        └── feature/README-portfolio
+```
+
+Each feature is developed in isolation, merged via Merge Request (GitLab) into `develop`, then released to `main`.
+
+---
+
+## 📋 Environment Variables Reference
+
+| Variable | Description | Example |
+|---|---|---|
+| `JWT_SECRET` | HMAC-SHA256 signing key (min 32 chars) | `mySecretKey...` |
+| `JWT_EXPIRATION` | Access token TTL in milliseconds | `900000` (15 min) |
+| `REFRESH_TOKEN_EXPIRATION` | Refresh token TTL in milliseconds | `604800000` (7 days) |
+| `DB_URL` | JDBC connection string | `jdbc:postgresql://localhost:5432/authdb` |
+| `DB_USERNAME` | PostgreSQL user | `authuser` |
+| `DB_PASSWORD` | PostgreSQL password | `changeme` |
+
+> ⚠️ Never commit `.env` to version control. Only `.env.example` belongs in the repository.
+
+---
+
+## 📄 License
+
+MIT — feel free to use this as a reference or starting point for your own projects.
+
+---
+
+*Built as a portfolio project to demonstrate production-ready Spring Boot patterns used in French banking and fintech environments.*
