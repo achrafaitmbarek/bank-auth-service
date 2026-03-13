@@ -16,6 +16,14 @@ spring:
       hibernate:
         format_sql: true
 
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    properties:
+      spring.json.add.type.headers: false
+
 server:
   port: ${SERVER_PORT:8080}
 
@@ -27,8 +35,10 @@ jwt:
 logging:
    level:
      root: INFO
-     com.bank.auth_service: DEBUG
+     com.bank.authservice: DEBUG
      org.hibernate.SQL: DEBUG
+     org.apache.kafka: WARN
+     org.springframework.kafka: WARN
    pattern:
      console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
      # Format : date [thread] LEVEL classe - message

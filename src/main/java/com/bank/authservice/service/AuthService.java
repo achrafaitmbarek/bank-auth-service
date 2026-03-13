@@ -7,6 +7,7 @@ import com.bank.authservice.domain.User;
 import com.bank.authservice.dto.AuthResponse;
 import com.bank.authservice.dto.LoginRequest;
 import com.bank.authservice.dto.RegisterRequest;
+import com.bank.authservice.event.UserRegisteredEvent;
 import com.bank.authservice.exception.ApiException;
 import com.bank.authservice.repository.RefreshTokenRepository;
 import com.bank.authservice.repository.UserRepository;
@@ -28,6 +29,8 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final KafkaProducerService kafkaProducerService;
+
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
@@ -50,6 +53,12 @@ public class AuthService {
 
         String token = jwtService.generateToken(user.getEmail(), user.getRole().name());
         RefreshToken refreshToken = jwtService.generateRefreshToken(user);
+
+        UserRegisteredEvent event = UserRegisteredEvent.builder()
+                .email(user.getEmail())
+                .role(user.getRole().name())
+                .build();
+        kafkaProducerService.publishUserRegistered(event);
 
         return AuthResponse.builder()
                 .token(token)
