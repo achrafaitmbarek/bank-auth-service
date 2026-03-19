@@ -1,14 +1,8 @@
 package com.bank.authservice.service;
 
-import com.bank.authservice.domain.RefreshToken;
-import com.bank.authservice.domain.Role;
-import com.bank.authservice.domain.User;
 import com.bank.authservice.dto.AuthResponse;
-import com.bank.authservice.dto.LoginRequest;
 import com.bank.authservice.dto.RegisterRequest;
 import com.bank.authservice.exception.ApiException;
-import com.bank.authservice.repository.RefreshTokenRepository;
-import com.bank.authservice.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
