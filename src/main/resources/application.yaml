@@ -3,42 +3,55 @@ spring:
     name: auth-service
 
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:authdb}
-    username: ${DB_USERNAME:admin}
-    password: ${DB_PASSWORD:secret}
+    url: jdbc:postgresql://localhost:5432/authdb
+    username: admin
+    password: secret
     driver-class-name: org.postgresql.Driver
 
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: update        # Hibernate crée/met à jour les tables automatiquement
     show-sql: true
     properties:
       hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
 
+  # Kafka
   kafka:
     bootstrap-servers: localhost:9092
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
-    properties:
-      spring.json.add.type.headers: false
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+  # OAuth2 Resource Server : auth-service valide les tokens Keycloak
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:8180/realms/bank-app
 
 server:
-  port: ${SERVER_PORT:8080}
+  port: 8081
 
-jwt:
-  secret: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
-  expiration: ${JWT_EXPIRATION:3600000}
-  refresh-expiration: ${JWT_REFRESH_EXPIRATION:604800000}
+# Keycloak Admin API — pour créer des users depuis auth-service
+# Ces credentials correspondent à l'admin Keycloak défini dans docker-compose
+keycloak:
+  admin:
+    server-url: http://localhost:8180
+    realm: bank-app
+    username: admin
+    password: admin
+    client-id: api-gateway
+
+# Swagger / OpenAPI
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
 
 logging:
-   level:
-     root: INFO
-     com.bank.authservice: DEBUG
-     org.hibernate.SQL: DEBUG
-     org.apache.kafka: WARN
-     org.springframework.kafka: WARN
-   pattern:
-     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
-     # Format : date [thread] LEVEL classe - message
+  level:
+    com.bank.authservice: DEBUG
+    org.springframework.security: INFO
