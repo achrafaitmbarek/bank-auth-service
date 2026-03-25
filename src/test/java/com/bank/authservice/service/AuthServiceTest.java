@@ -1,215 +1,137 @@
 package com.bank.authservice.service;
 
+import com.bank.authservice.domain.UserProfile;
 import com.bank.authservice.dto.AuthResponse;
 import com.bank.authservice.dto.RegisterRequest;
-import com.bank.authservice.exception.ApiException;
+import com.bank.authservice.event.UserRegisteredEvent;
+import com.bank.authservice.repository.UserProfileRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.security.crypto.password.PasswordEncoder;
 
-import java.time.LocalDateTime;
-import java.util.Optional;
+import java.util.Map;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
-@ExtendWith(MockitoExtension.class)     // Active Mockito pour cette classe de test
+// @ExtendWith(MockitoExtension.class) = active Mockito pour cette classe de test
+@ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
 
-    // @Mock crée un faux objet — pas de vraie BDD, pas de vrai JWT
+    // @Mock = crée un faux objet — les méthodes ne font rien par défaut
+    // On contrôle ce qu'elles retournent avec "when(...).thenReturn(...)"
     @Mock
-    private UserRepository userRepository;
+    private UserProfileRepository userProfileRepository;
 
     @Mock
-    private PasswordEncoder passwordEncoder;
+    private KeycloakAdminService keycloakAdminService;
 
     @Mock
-    private JwtService jwtService;
+    private KafkaProducerService kafkaProducerService;
 
-    @Mock
-    private RefreshTokenRepository refreshTokenRepository;
-
-    // @InjectMocks crée AuthService et injecte tous les @Mock dedans
+    // @InjectMocks = crée le vrai AuthService avec les @Mock injectés dedans
     @InjectMocks
     private AuthService authService;
 
-    // Objets réutilisables dans tous les tests
-    private User mockUser;
-    private RegisterRequest registerRequest;
-    private LoginRequest loginRequest;
+    // Données de test réutilisées dans tous les tests
+    private RegisterRequest validRequest;
 
-    @BeforeEach     // S'exécute AVANT chaque test — réinitialise l'état
+    // @BeforeEach = s'exécute avant chaque @Test
+    @BeforeEach
     void setUp() {
-        mockUser = User.builder()
-                .id(1L)
-                .email("achraf@bank.com")
-                .password("$2a$10$hashedPassword")
-                .role(Role.USER)
-                .build();
-
-        registerRequest = new RegisterRequest();
-        registerRequest.setEmail("achraf@bank.com");
-        registerRequest.setPassword("secret123");
-
-        loginRequest = new LoginRequest();
-        loginRequest.setEmail("achraf@bank.com");
-        loginRequest.setPassword("secret123");
+        validRequest = new RegisterRequest();
+        validRequest.setEmail("test@bank.com");
+        validRequest.setPassword("Test1234!");
+        validRequest.setFirstName("John");
+        validRequest.setLastName("Doe");
     }
 
-    // ─────────────────────────────────────────
-    // REGISTER TESTS
-    // ─────────────────────────────────────────
-
+    // ─────────────────────────────────────────────────────────────
+    // TEST 1 : Register réussi → retourne les tokens
+    // ─────────────────────────────────────────────────────────────
     @Test
-    void register_ShouldReturnAuthResponse_WhenEmailIsNew() {
-        // GIVEN — on définit le comportement des mocks
-        when(userRepository.existsByEmail("achraf@bank.com"))
-                .thenReturn(false);         // email pas encore en BDD
-        when(passwordEncoder.encode("secret123"))
-                .thenReturn("$2a$10$hashedPassword");
-        when(userRepository.save(any(User.class)))
-                .thenReturn(mockUser);
-        when(jwtService.generateToken(anyString(), anyString()))
-                .thenReturn("fake.jwt.token");
+    void register_shouldReturnTokens_whenUserIsNew() {
+        // GIVEN — on configure les mocks pour simuler le comportement attendu
+        // "quand on appelle existsByEmail → retourne false (email pas encore en DB)"
+        when(userProfileRepository.existsByEmail("test@bank.com")).thenReturn(false);
 
-        RefreshToken mockRefreshToken = RefreshToken.builder()
-                .token("fake-refresh-token")
-                .user(mockUser)
-                .expiresAt(LocalDateTime.now().plusDays(7))
-                .revoked(false)
-                .build();
-        when(jwtService.generateRefreshToken(any(User.class)))
-                .thenReturn(mockRefreshToken);
+        // "quand on appelle createUser → retourne un UUID Keycloak"
+        when(keycloakAdminService.createUser(anyString(), anyString(), anyString(), anyString()))
+                .thenReturn("uuid-keycloak-123");
 
-        // WHEN — on exécute la méthode à tester
-        AuthResponse response = authService.register(registerRequest);
+        // "quand on appelle save → retourne le profil sauvegardé"
+        when(userProfileRepository.save(any(UserProfile.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
-        // THEN — on vérifie le résultat
+        // "quand on appelle getTokenForUser → retourne un faux token Keycloak"
+        when(keycloakAdminService.getTokenForUser(anyString(), anyString()))
+                .thenReturn(Map.of(
+                        "access_token", "fake-access-token",
+                        "refresh_token", "fake-refresh-token",
+                        "expires_in", 300
+                ));
+
+        // WHEN — on appelle la méthode qu'on teste
+        AuthResponse response = authService.register(validRequest);
+
+        // THEN — on vérifie que le résultat est correct
         assertThat(response).isNotNull();
-        assertThat(response.getEmail()).isEqualTo("achraf@bank.com");
-        assertThat(response.getToken()).isEqualTo("fake.jwt.token");
-        assertThat(response.getRole()).isEqualTo("USER");
+        assertThat(response.getEmail()).isEqualTo("test@bank.com");
+        assertThat(response.getKeycloakId()).isEqualTo("uuid-keycloak-123");
+        assertThat(response.getAccessToken()).isEqualTo("fake-access-token");
+        assertThat(response.getExpiresIn()).isEqualTo(300);
 
-        // Vérifie que save() a bien été appelé UNE fois
-        verify(userRepository, times(1)).save(any(User.class));
+        // Vérifie que save() a bien été appelé 1 fois
+        verify(userProfileRepository, times(1)).save(any(UserProfile.class));
+
+        // Vérifie que Kafka a bien reçu l'event
+        verify(kafkaProducerService, times(1)).publishUserRegistered(any(UserRegisteredEvent.class));
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // TEST 2 : Email déjà utilisé → exception
+    // ─────────────────────────────────────────────────────────────
     @Test
-    void register_ShouldThrow409_WhenEmailAlreadyExists() {
-        // GIVEN
-        when(userRepository.existsByEmail("achraf@bank.com"))
-                .thenReturn(true);          // email déjà en BDD
+    void register_shouldThrowException_whenEmailAlreadyExists() {
+        // GIVEN — l'email existe déjà en DB
+        when(userProfileRepository.existsByEmail("test@bank.com")).thenReturn(true);
 
-        // WHEN + THEN — on vérifie que l'exception est bien lancée
-        assertThatThrownBy(() -> authService.register(registerRequest))
-                .isInstanceOf(ApiException.class)
+        // WHEN + THEN — on s'attend à une RuntimeException
+        assertThatThrownBy(() -> authService.register(validRequest))
+                .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("Email already registered");
 
-        // Vérifie que save() n'a JAMAIS été appelé
-        verify(userRepository, never()).save(any(User.class));
+        // Keycloak ne doit pas être appelé si l'email existe déjà
+        verify(keycloakAdminService, never()).createUser(anyString(), anyString(), anyString(), anyString());
     }
 
-    // ─────────────────────────────────────────
-    // LOGIN TESTS
-    // ─────────────────────────────────────────
-
+    // ─────────────────────────────────────────────────────────────
+    // TEST 3 : DB échoue → rollback Keycloak
+    // ─────────────────────────────────────────────────────────────
     @Test
-    void login_ShouldReturnAuthResponse_WhenCredentialsAreValid() {
+    void register_shouldRollbackKeycloak_whenDatabaseFails() {
         // GIVEN
-        when(userRepository.findByEmail("achraf@bank.com"))
-                .thenReturn(Optional.of(mockUser));
-        when(passwordEncoder.matches("secret123", "$2a$10$hashedPassword"))
-                .thenReturn(true);          // mot de passe correct
-        when(jwtService.generateToken(anyString(), anyString()))
-                .thenReturn("fake.jwt.token");
+        when(userProfileRepository.existsByEmail("test@bank.com")).thenReturn(false);
+        when(keycloakAdminService.createUser(anyString(), anyString(), anyString(), anyString()))
+                .thenReturn("uuid-keycloak-123");
 
-        RefreshToken mockRefreshToken = RefreshToken.builder()
-                .token("fake-refresh-token")
-                .user(mockUser)
-                .expiresAt(LocalDateTime.now().plusDays(7))
-                .revoked(false)
-                .build();
-        when(jwtService.generateRefreshToken(any(User.class)))
-                .thenReturn(mockRefreshToken);
+        // La DB plante !
+        when(userProfileRepository.save(any(UserProfile.class)))
+                .thenThrow(new RuntimeException("Database connection lost"));
 
-        // WHEN
-        AuthResponse response = authService.login(loginRequest);
+        // WHEN + THEN — exception remontée
+        assertThatThrownBy(() -> authService.register(validRequest))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("Registration failed");
 
-        // THEN
-        assertThat(response).isNotNull();
-        assertThat(response.getEmail()).isEqualTo("achraf@bank.com");
-        assertThat(response.getToken()).isEqualTo("fake.jwt.token");
-    }
-
-    @Test
-    void login_ShouldThrow401_WhenEmailNotFound() {
-        // GIVEN
-        when(userRepository.findByEmail("achraf@bank.com"))
-                .thenReturn(Optional.empty());  // email inexistant
-
-        // WHEN + THEN
-        assertThatThrownBy(() -> authService.login(loginRequest))
-                .isInstanceOf(ApiException.class)
-                .hasMessageContaining("Invalid credentials");
-    }
-
-    @Test
-    void login_ShouldThrow401_WhenPasswordIsWrong() {
-        // GIVEN
-        when(userRepository.findByEmail("achraf@bank.com"))
-                .thenReturn(Optional.of(mockUser));
-        when(passwordEncoder.matches("secret123", "$2a$10$hashedPassword"))
-                .thenReturn(false);     // mauvais mot de passe
-
-        // WHEN + THEN
-        assertThatThrownBy(() -> authService.login(loginRequest))
-                .isInstanceOf(ApiException.class)
-                .hasMessageContaining("Invalid credentials");
-
-        // Vérifie que generateToken n'a JAMAIS été appelé
-        verify(jwtService, never()).generateToken(anyString(), anyString());
-    }
-
-    // ─────────────────────────────────────────
-    // LOGOUT TESTS
-    // ─────────────────────────────────────────
-
-    @Test
-    void logout_ShouldRevokeToken_WhenTokenIsValid() {
-        // GIVEN
-        RefreshToken mockRefreshToken = RefreshToken.builder()
-                .token("valid-refresh-token")
-                .user(mockUser)
-                .expiresAt(LocalDateTime.now().plusDays(7))
-                .revoked(false)
-                .build();
-
-        when(refreshTokenRepository.findByToken("valid-refresh-token"))
-                .thenReturn(Optional.of(mockRefreshToken));
-
-        // WHEN
-        authService.logout("valid-refresh-token");
-
-        // THEN — vérifie que le token est bien révoqué
-        assertThat(mockRefreshToken.isRevoked()).isTrue();
-        verify(refreshTokenRepository, times(1)).save(mockRefreshToken);
-    }
-
-    @Test
-    void logout_ShouldThrow401_WhenTokenNotFound() {
-        // GIVEN
-        when(refreshTokenRepository.findByToken("invalid-token"))
-                .thenReturn(Optional.empty());
-
-        // WHEN + THEN
-        assertThatThrownBy(() -> authService.logout("invalid-token"))
-                .isInstanceOf(ApiException.class)
-                .hasMessageContaining("Invalid refresh token");
+        // VÉRIFICATION CLÉ : deleteKeycloakUser doit être appelé pour le rollback
+        // C'est ce qui montre qu'on gère les transactions distribuées
+        verify(keycloakAdminService, times(1)).deleteKeycloakUser("uuid-keycloak-123");
     }
 }

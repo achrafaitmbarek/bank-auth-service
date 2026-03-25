@@ -55,3 +55,17 @@ logging:
   level:
     com.bank.authservice: DEBUG
     org.springframework.security: INFO
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics
+  endpoint:
+    health:
+      show-details: always
+
+info:
+  app:
+    name: bank-auth-service
+    version: 1.0.0

@@ -1,18 +1,10 @@
-package com.bank.authservice.domain;  // ← domain pas entity
+package com.bank.authservice.domain;
 
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
 
-/**
- * UserProfile — profil métier stocké dans notre DB.
- *
- * On ne stocke PLUS le mot de passe ici.
- * Keycloak gère l'authentification.
- *
- * id = keycloakId (UUID du "sub" dans le JWT Keycloak)
- * → permet de lier les données bancaires futures à un user Keycloak
- */
+
 @Entity
 @Table(name = "user_profile")
 @Data
@@ -23,7 +15,7 @@ public class UserProfile {
 
     @Id
     @Column(name = "id", length = 36)
-    private String id;          // UUID Keycloak
+    private String id;
 
     @Column(unique = true, nullable = false)
     private String email;

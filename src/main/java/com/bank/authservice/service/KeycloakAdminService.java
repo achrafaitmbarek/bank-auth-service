@@ -35,11 +35,8 @@ public class KeycloakAdminService {
 
     @Value("${keycloak.admin.client-id}")
     private String clientId;
-    /**
-     * Étape 1 : Récupérer un token admin depuis Keycloak.
-     * On utilise le realm "master" avec le client "admin-cli" (client par défaut de Keycloak).
-     * C'est comme un "super login" pour pouvoir gérer les users via l'API Admin.
-     */
+
+
     private String getAdminToken() {
         String tokenUrl = serverUrl + "/realms/master/protocol/openid-connect/token";
 
@@ -48,8 +45,8 @@ public class KeycloakAdminService {
 
         MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
         body.add("grant_type", "password");
-        body.add("client_id", "admin-cli");   // client admin intégré à Keycloak
-        body.add("username", adminUsername);   // admin / admin (défini dans docker-compose)
+        body.add("client_id", "admin-cli");
+        body.add("username", adminUsername);
         body.add("password", adminPassword);
 
         HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
@@ -61,38 +58,27 @@ public class KeycloakAdminService {
         return token;
     }
 
-    /**
-     * Étape 2 : Créer un utilisateur dans le realm bank-app via l'API Admin REST Keycloak.
-     *
-     * Keycloak Admin REST API : POST /admin/realms/{realm}/users
-     * Retourne 201 Created avec un header Location: .../users/{keycloakId}
-     * On extrait l'UUID du user depuis ce header.
-     *
-     * @return keycloakId (UUID) du user créé
-     */
     public String createUser(String email, String firstName, String lastName, String password) {
         String adminToken = getAdminToken();
         String usersUrl = serverUrl + "/admin/realms/" + realm + "/users";
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBearerAuth(adminToken); // Authorization: Bearer <adminToken>
+        headers.setBearerAuth(adminToken);
 
-        // Credential : le mot de passe de l'utilisateur
         Map<String, Object> credential = Map.of(
                 "type", "password",
                 "value", password,
-                "temporary", false  // false = l'user n'est pas forcé de changer son mdp
+                "temporary", false
         );
 
-        // UserRepresentation : structure attendue par Keycloak Admin API
         Map<String, Object> userRepresentation = Map.of(
-                "username", email,          // username = email dans notre cas
+                "username", email,
                 "email", email,
                 "firstName", firstName,
                 "lastName", lastName,
-                "enabled", true,            // compte actif immédiatement
-                "emailVerified", true,      // pas de vérification email pour le dev
+                "enabled", true,
+                "emailVerified", true,
                 "credentials", List.of(credential)
         );
 
@@ -101,25 +87,56 @@ public class KeycloakAdminService {
         try {
             ResponseEntity<Void> response = restTemplate.postForEntity(usersUrl, request, Void.class);
 
-            // Keycloak retourne 201 Created
-            // Le header Location contient l'URL du user créé :
-            // http://localhost:8180/admin/realms/bank-app/users/5f3fdc67-0401-4b20-...
+            // UUID extrait du header Location retourné par Keycloak (201 Created)
             URI location = response.getHeaders().getLocation();
             String[] parts = location.getPath().split("/");
-            String keycloakId = parts[parts.length - 1]; // dernier segment = UUID
+            String keycloakId = parts[parts.length - 1];
 
             log.info("User created in Keycloak with id: {}", keycloakId);
             return keycloakId;
 
         } catch (HttpClientErrorException.Conflict e) {
-            // 409 Conflict = email déjà utilisé dans Keycloak
             throw new RuntimeException("Email already exists in Keycloak: " + email);
         } catch (Exception e) {
             log.error("Failed to create user in Keycloak", e);
             throw new RuntimeException("Failed to create user in Keycloak: " + e.getMessage());
         }
-
     }
+
+    /**
+     * Rollback — supprime le user dans Keycloak si la DB échoue.
+     *
+     * Problème classique des transactions distribuées :
+     * Keycloak et PostgreSQL sont deux systèmes séparés.
+     * @Transactional ne couvre que PostgreSQL — pas Keycloak.
+     *
+     * Scénario sans rollback :
+     *   1. createUser() → Keycloak OK
+     *   2. userProfileRepository.save() → DB crash
+     *   3. Résultat : user dans Keycloak mais pas en DB = incohérence
+     *
+     * Avec ce rollback :
+     *   1. createUser() → Keycloak OK
+     *   2. DB crash → on appelle deleteKeycloakUser()
+     *   3. Résultat : ni dans Keycloak ni en DB = cohérence
+     */
+    public void deleteKeycloakUser(String keycloakId) {
+        try {
+            String adminToken = getAdminToken();
+            String deleteUrl = serverUrl + "/admin/realms/" + realm + "/users/" + keycloakId;
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setBearerAuth(adminToken);
+
+            restTemplate.exchange(deleteUrl, HttpMethod.DELETE, new HttpEntity<>(headers), Void.class);
+            log.info("Keycloak user deleted (rollback): {}", keycloakId);
+        } catch (Exception e) {
+            // On log l'erreur mais on ne throw pas — le rollback est best-effort
+            log.error("Failed to rollback Keycloak user {}: {}", keycloakId, e.getMessage());
+        }
+    }
+
+
     public Map<String, Object> getTokenForUser(String email, String password) {
         String tokenUrl = serverUrl + "/realms/" + realm + "/protocol/openid-connect/token";
 
@@ -128,7 +145,7 @@ public class KeycloakAdminService {
 
         MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
         body.add("grant_type", "password");
-        body.add("client_id", clientId);  // "api-gateway"
+        body.add("client_id", clientId);
         body.add("username", email);
         body.add("password", password);
 

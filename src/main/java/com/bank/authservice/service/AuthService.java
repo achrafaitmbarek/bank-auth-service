@@ -25,12 +25,10 @@ public class AuthService {
     @Transactional
     public AuthResponse register(RegisterRequest request) {
 
-        // Vérification rapide en base locale
         if (userProfileRepository.existsByEmail(request.getEmail())) {
             throw new RuntimeException("Email already registered: " + request.getEmail());
         }
 
-        // Création dans Keycloak → retourne le keycloakId (UUID)
         String keycloakId = keycloakAdminService.createUser(
                 request.getEmail(),
                 request.getFirstName(),
@@ -38,40 +36,48 @@ public class AuthService {
                 request.getPassword()
         );
 
-        // Sauvegarde profil dans notre DB
-        UserProfile profile = UserProfile.builder()
-                .id(keycloakId)
-                .email(request.getEmail())
-                .firstName(request.getFirstName())
-                .lastName(request.getLastName())
-                .createdAt(LocalDateTime.now())
-                .build();
+        try {
+            // Si ça échoue → le catch supprime le user dans Keycloak (rollback)
+            UserProfile profile = UserProfile.builder()
+                    .id(keycloakId)
+                    .email(request.getEmail())
+                    .firstName(request.getFirstName())
+                    .lastName(request.getLastName())
+                    .createdAt(LocalDateTime.now())
+                    .build();
 
-        userProfileRepository.save(profile);
-        log.info("User profile saved for keycloakId: {}", keycloakId);
+            userProfileRepository.save(profile);
+            log.info("User profile saved for keycloakId: {}", keycloakId);
 
-        // Event Kafka → notification-service
-        UserRegisteredEvent event = UserRegisteredEvent.builder()
-                .email(request.getEmail())
-                .role("USER")
-                .build();
-        kafkaProducerService.publishUserRegistered(event);
-        log.info("Kafka event sent for: {}", request.getEmail());
+            UserRegisteredEvent event = UserRegisteredEvent.builder()
+                    .email(request.getEmail())
+                    .role("USER")
+                    .build();
+            kafkaProducerService.publishUserRegistered(event);
 
-        // Auto-login : récupère le token Keycloak immédiatement après inscription
-        // L'user n'a pas besoin de faire un second appel pour se connecter
-        Map<String, Object> tokenResponse = keycloakAdminService.getTokenForUser(
-                request.getEmail(),
-                request.getPassword()
-        );
+            // Auto-login : token Keycloak retourné directement
+            Map<String, Object> tokenResponse = keycloakAdminService.getTokenForUser(
+                    request.getEmail(),
+                    request.getPassword()
+            );
 
-        return AuthResponse.builder()
-                .message("Registration successful.")
-                .email(request.getEmail())
-                .keycloakId(keycloakId)
-                .accessToken((String) tokenResponse.get("access_token"))
-                .refreshToken((String) tokenResponse.get("refresh_token"))
-                .expiresIn((Integer) tokenResponse.get("expires_in"))
-                .build();
+            return AuthResponse.builder()
+                    .message("Registration successful.")
+                    .email(request.getEmail())
+                    .keycloakId(keycloakId)
+                    .accessToken((String) tokenResponse.get("access_token"))
+                    .refreshToken((String) tokenResponse.get("refresh_token"))
+                    .expiresIn((Integer) tokenResponse.get("expires_in"))
+                    .build();
+
+        } catch (Exception e) {
+            // ROLLBACK DISTRIBUÉ :
+            // @Transactional rollback automatiquement PostgreSQL
+            // mais Keycloak est un système externe → on doit le rollback manuellement
+            log.error("Registration failed for {}, rolling back Keycloak user {}",
+                    request.getEmail(), keycloakId);
+            keycloakAdminService.deleteKeycloakUser(keycloakId);
+            throw new RuntimeException("Registration failed: " + e.getMessage());
+        }
     }
 }
