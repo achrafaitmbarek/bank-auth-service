@@ -21,7 +21,6 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 // @ExtendWith(MockitoExtension.class) = active Mockito pour cette classe de test
-// Mockito = librairie qui "simule" les dépendances (comme jest.mock() en JavaScript)
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
 
@@ -44,7 +43,6 @@ class AuthServiceTest {
     private RegisterRequest validRequest;
 
     // @BeforeEach = s'exécute avant chaque @Test
-    // Comme beforeEach() en Jest
     @BeforeEach
     void setUp() {
         validRequest = new RegisterRequest();
@@ -83,7 +81,6 @@ class AuthServiceTest {
         AuthResponse response = authService.register(validRequest);
 
         // THEN — on vérifie que le résultat est correct
-        // assertThat = comme expect() en Jest
         assertThat(response).isNotNull();
         assertThat(response.getEmail()).isEqualTo("test@bank.com");
         assertThat(response.getKeycloakId()).isEqualTo("uuid-keycloak-123");
@@ -106,7 +103,6 @@ class AuthServiceTest {
         when(userProfileRepository.existsByEmail("test@bank.com")).thenReturn(true);
 
         // WHEN + THEN — on s'attend à une RuntimeException
-        // assertThatThrownBy = comme expect(() => ...).toThrow() en Jest
         assertThatThrownBy(() -> authService.register(validRequest))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("Email already registered");

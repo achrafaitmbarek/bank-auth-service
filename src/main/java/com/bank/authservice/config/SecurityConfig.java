@@ -36,11 +36,9 @@ public class SecurityConfig {
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // Endpoints publics (pas besoin de token)
                         .requestMatchers("/api/auth/register").permitAll()
                         .requestMatchers("/actuator/**").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
-                        // Tout le reste nécessite un token Keycloak valide
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(exception -> exception
@@ -53,11 +51,9 @@ public class SecurityConfig {
                         })
                 )
                 // OAuth2 Resource Server : délègue la validation du JWT à Keycloak
-                // (issuer-uri configuré dans application.yaml)
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(Customizer.withDefaults())
                 )
-                // Rate limiting : limite le nombre de requêtes par IP
                 .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

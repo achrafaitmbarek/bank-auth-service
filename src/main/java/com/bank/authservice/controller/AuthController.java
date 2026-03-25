@@ -19,14 +19,6 @@ public class AuthController {
 
     private final AuthService authService;
 
-    /**
-     * POST /api/auth/register
-     * Crée le user dans Keycloak + sauvegarde un profil dans notre DB.
-     *
-     * Note : le login n'est plus géré ici.
-     * Le client appelle directement Keycloak :
-     * POST http://localhost:8180/realms/bank-app/protocol/openid-connect/token
-     */
     @Operation(summary = "Register a new user (creates account in Keycloak)")
     @PostMapping("/register")
     public ResponseEntity<AuthResponse> register(

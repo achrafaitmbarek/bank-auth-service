@@ -25,12 +25,10 @@ public class AuthService {
     @Transactional
     public AuthResponse register(RegisterRequest request) {
 
-        // Vérification rapide en base locale
         if (userProfileRepository.existsByEmail(request.getEmail())) {
             throw new RuntimeException("Email already registered: " + request.getEmail());
         }
 
-        // Création dans Keycloak → retourne le keycloakId (UUID)
         String keycloakId = keycloakAdminService.createUser(
                 request.getEmail(),
                 request.getFirstName(),
@@ -39,7 +37,6 @@ public class AuthService {
         );
 
         try {
-            // Sauvegarde profil dans notre DB
             // Si ça échoue → le catch supprime le user dans Keycloak (rollback)
             UserProfile profile = UserProfile.builder()
                     .id(keycloakId)
@@ -52,7 +49,6 @@ public class AuthService {
             userProfileRepository.save(profile);
             log.info("User profile saved for keycloakId: {}", keycloakId);
 
-            // Event Kafka → notification-service
             UserRegisteredEvent event = UserRegisteredEvent.builder()
                     .email(request.getEmail())
                     .role("USER")
