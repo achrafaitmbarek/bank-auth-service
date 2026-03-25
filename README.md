@@ -1,11 +1,12 @@
-# 🏦 Bank Auth Service
+# Bank Auth Service
 
-Microservice d'authentification bancaire basé sur **Keycloak**, **Spring Boot 4** et **Kafka**.
-Partie du projet **Bank Platform** — architecture microservices orientée fintech/ESN.
+Microservice d'authentification pour une architecture bancaire microservices. Gère l'inscription, la validation JWT et la publication d'événements — le login passe directement par Keycloak.
+
+Projet portfolio — Spring Boot 4, Keycloak, Kafka, PostgreSQL.
 
 ---
 
-## Architecture globale
+## Architecture
 
 ```
 Client / Postman
@@ -36,7 +37,7 @@ Client / Postman
 
 ---
 
-## Stack technique
+## Stack
 
 | Technologie | Version | Rôle |
 |---|---|---|
@@ -54,25 +55,25 @@ Client / Postman
 
 ## Fonctionnalités
 
-- **Register** — crée l'utilisateur dans Keycloak via Admin REST API + profil en DB + auto-login
-- **Login** — délégué à Keycloak (OAuth2 Password Flow), retourne access_token RS256
-- **Token validation** — API Gateway valide le JWT Keycloak (RS256) avant de router
-- **User profile** — endpoint protégé qui retourne les infos de l'utilisateur connecté
-- **Kafka events** — event `USER_REGISTERED` publié sur `user.registered` à chaque inscription
-- **Rate limiting** — protection contre les abus via filtre custom
-- **CORS** — configuré pour Angular (port 4200)
+- Register : crée l'utilisateur dans Keycloak via Admin REST API + profil en DB + auto-login
+- Login : délégué à Keycloak (OAuth2 Password Flow), retourne access_token RS256
+- Token validation : API Gateway valide le JWT Keycloak (RS256) avant de router
+- User profile : endpoint protégé qui retourne les infos de l'utilisateur connecté
+- Kafka events : event `USER_REGISTERED` publié sur `user.registered` à chaque inscription
+- Rate limiting : 5 requêtes/minute par IP sur les routes `/api/auth`
+- CORS : configuré pour Angular (port 4200)
 
 ---
 
 ## Endpoints
 
-### Auth Controller — public
+### Auth — public
 
-| Méthode | Endpoint | Description | Auth |
-|---|---|---|---|
-| `POST` | `/api/auth/register` | Inscription + auto-login Keycloak | ❌ Public |
+| Méthode | Endpoint | Auth |
+|---|---|---|
+| `POST` | `/api/auth/register` | ❌ Public |
 
-**Body Register :**
+Body :
 ```json
 {
   "email": "john@bank.com",
@@ -82,7 +83,7 @@ Client / Postman
 }
 ```
 
-**Réponse Register :**
+Réponse :
 ```json
 {
   "message": "Registration successful.",
@@ -103,13 +104,13 @@ Content-Type: application/x-www-form-urlencoded
 client_id=api-gateway&username=john@bank.com&password=Test1234!&grant_type=password
 ```
 
-### User Controller — protégé
+### User — protégé
 
-| Méthode | Endpoint | Description | Auth |
-|---|---|---|---|
-| `GET` | `/api/user/me` | Profil de l'utilisateur connecté | ✅ Bearer Token |
+| Méthode | Endpoint | Auth |
+|---|---|---|
+| `GET` | `/api/user/me` | ✅ Bearer Token |
 
-**Réponse /me :**
+Réponse :
 ```json
 {
   "email": "john@bank.com",
@@ -138,53 +139,48 @@ client_id=api-gateway&username=john@bank.com&password=Test1234!&grant_type=passw
 
 ---
 
-## Sécurité
+## Choix techniques
 
-- **JWT RS256** — tokens signés par Keycloak (clé asymétrique)
-- **OAuth2 Resource Server** — API Gateway + auth-service délèguent la validation à Keycloak
-- **Stateless** — aucune session serveur, SessionCreationPolicy.STATELESS
-- **Rate Limiting** — filtre custom limité par IP
-- **CORS** — origines autorisées configurées explicitement
-- **BCrypt** — mots de passe hashés par Keycloak (jamais stockés en clair)
+**Distributed transaction rollback** — Keycloak et PostgreSQL sont deux systèmes séparés. `@Transactional` couvre PostgreSQL mais pas Keycloak. Si la DB échoue après la création Keycloak, `deleteKeycloakUser()` est appelé manuellement pour éviter l'incohérence.
+
+**Auto-login après register** — après inscription, le service appelle directement `/token` Keycloak et retourne les tokens au client. L'utilisateur n'a pas besoin de faire un second appel.
+
+**RS256 vs HS256** — les tokens sont signés avec une clé asymétrique (Keycloak). L'API Gateway valide avec la clé publique sans jamais avoir la clé privée.
 
 ---
 
-## Design Patterns
+## Sécurité
 
-| Pattern | Implémentation |
-|---|---|
-| API Gateway | Spring Cloud Gateway — point d'entrée unique |
-| Event-Driven | Kafka Producer/Consumer — découplage des services |
-| DTO Pattern | RegisterRequest, AuthResponse — séparation entité/API |
-| Repository Pattern | UserProfileRepository — abstraction de la persistance |
-| Dependency Injection | @RequiredArgsConstructor — injection par constructeur |
+- JWT RS256 — tokens signés par Keycloak (clé asymétrique)
+- OAuth2 Resource Server — API Gateway + auth-service délèguent la validation à Keycloak
+- Stateless — aucune session serveur, `SessionCreationPolicy.STATELESS`
+- Rate limiting — 5 requêtes/minute par IP sur les routes `/api/auth`
+- CORS — origines autorisées configurées explicitement
+- BCrypt — mots de passe hashés par Keycloak, jamais stockés en clair
 
 ---
 
 ## Lancer le projet
 
-### Prérequis
-- Java 17+
-- Docker Desktop
-- IntelliJ IDEA
+Prérequis : Java 17+, Docker Desktop, IntelliJ IDEA
 
-### 1. Démarrer l'infrastructure
+### 1. Infrastructure
 
 ```bash
 cd infrastructure
 docker-compose up -d
 ```
 
-Services démarrés : PostgreSQL auth (5432), notification (5433), keycloak (5434), Keycloak (8180), Kafka + Zookeeper (9092)
+Lance : PostgreSQL (5432, 5433, 5434), Keycloak (8180), Kafka + Zookeeper (9092)
 
-### 2. Configurer Keycloak
+### 2. Keycloak
 
 1. Ouvre `http://localhost:8180` → admin/admin
 2. Crée le realm `bank-app`
 3. Crée le client `api-gateway` (Direct Access Grants activé)
 4. Crée les rôles `USER` et `ADMIN`
 
-### 3. Lancer les services dans l'ordre
+### 3. Services
 
 ```bash
 cd bank-auth-service && mvn spring-boot:run
@@ -194,7 +190,7 @@ cd api-gateway && mvn spring-boot:run
 
 ---
 
-## Structure du projet
+## Structure
 
 ```
 bank-auth-service/
@@ -235,7 +231,7 @@ develop  ← intégration continue
 feature/ ← fonctionnalités en cours
 ```
 
-**Tags :** `v1.0.0` — authentification complète avec Keycloak
+Tags : `v1.0.0` — authentification complète avec Keycloak
 
 ---
 
@@ -247,5 +243,5 @@ Swagger UI : `http://localhost:8081/swagger-ui.html`
 
 ## Auteur
 
-**Achraf Ait Mbarek** — Développeur Backend Java/Spring
-Projet portfolio bancaire
+Achraf Ait M'Barek — Développeur Backend Java/Spring
+Projet portfolio ESN bancaire (ASTEK, Exalt, SNCF)
