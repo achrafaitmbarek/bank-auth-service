@@ -65,19 +65,21 @@ build:
 test:
   stage: test
   image: maven:3.9-eclipse-temurin-17
-
+  services:
+    - postgres:15
+  variables:
+    POSTGRES_DB: authdb
+    POSTGRES_USER: admin
+    POSTGRES_PASSWORD: secret
+    POSTGRES_HOST_AUTH_METHOD: trust
+    SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/authdb
+    SPRING_DATASOURCE_USERNAME: admin
+    SPRING_DATASOURCE_PASSWORD: secret
   script:
-    # mvn test = lance uniquement les tests (pas de recompilation)
     - mvn test -B
-
-  # Rapport de tests — GitLab lit ce fichier et affiche les résultats
-  # dans l'interface (onglet "Tests" du pipeline)
   artifacts:
-    when: always   # Garder le rapport même si les tests échouent
     reports:
       junit: target/surefire-reports/TEST-*.xml
-    expire_in: 1 week
-
   only:
     - develop
     - main
