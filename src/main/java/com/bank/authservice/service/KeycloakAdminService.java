@@ -34,7 +34,8 @@ public class KeycloakAdminService {
     private String adminPassword;
 
     @Value("${keycloak.admin.client-id}")
-    private String clientId;
+    private String clientId;   // "api-gateway" — défini dans application.yaml
+
     /**
      * Étape 1 : Récupérer un token admin depuis Keycloak.
      * On utilise le realm "master" avec le client "admin-cli" (client par défaut de Keycloak).
@@ -112,14 +113,54 @@ public class KeycloakAdminService {
             return keycloakId;
 
         } catch (HttpClientErrorException.Conflict e) {
-            // 409 Conflict = email déjà utilisé dans Keycloak
             throw new RuntimeException("Email already exists in Keycloak: " + email);
         } catch (Exception e) {
             log.error("Failed to create user in Keycloak", e);
             throw new RuntimeException("Failed to create user in Keycloak: " + e.getMessage());
         }
-
     }
+
+    /**
+     * Rollback — supprime le user dans Keycloak si la DB échoue.
+     *
+     * Problème classique des transactions distribuées :
+     * Keycloak et PostgreSQL sont deux systèmes séparés.
+     * @Transactional ne couvre que PostgreSQL — pas Keycloak.
+     *
+     * Scénario sans rollback :
+     *   1. createUser() → Keycloak OK
+     *   2. userProfileRepository.save() → DB crash
+     *   3. Résultat : user dans Keycloak mais pas en DB = incohérence
+     *
+     * Avec ce rollback :
+     *   1. createUser() → Keycloak OK
+     *   2. DB crash → on appelle deleteKeycloakUser()
+     *   3. Résultat : ni dans Keycloak ni en DB = cohérence
+     */
+    public void deleteKeycloakUser(String keycloakId) {
+        try {
+            String adminToken = getAdminToken();
+            String deleteUrl = serverUrl + "/admin/realms/" + realm + "/users/" + keycloakId;
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setBearerAuth(adminToken);
+
+            restTemplate.exchange(deleteUrl, HttpMethod.DELETE, new HttpEntity<>(headers), Void.class);
+            log.info("Keycloak user deleted (rollback): {}", keycloakId);
+        } catch (Exception e) {
+            // On log l'erreur mais on ne throw pas — le rollback est best-effort
+            log.error("Failed to rollback Keycloak user {}: {}", keycloakId, e.getMessage());
+        }
+    }
+
+    /**
+     * Étape 3 : Auto-login après inscription.
+     *
+     * Appelle Keycloak /token avec les credentials du user qui vient de s'inscrire.
+     * Retourne access_token + refresh_token directement au client.
+     *
+     * Comme ça : register = create user + login en une seule requête.
+     */
     public Map<String, Object> getTokenForUser(String email, String password) {
         String tokenUrl = serverUrl + "/realms/" + realm + "/protocol/openid-connect/token";
 
