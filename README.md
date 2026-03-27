@@ -2,7 +2,26 @@
 
 Microservice d'authentification pour une architecture bancaire microservices. Gère l'inscription, la validation JWT et la publication d'événements — le login passe directement par Keycloak.
 
-Projet portfolio — Spring Boot 4, Keycloak, Kafka, PostgreSQL.
+Stack : Spring Boot 4, Keycloak, Kafka, PostgreSQL. Déployé sur AWS EC2 via GitLab CI/CD.
+
+---
+
+## Service disponible
+
+Le service tourne sur AWS EC2 — tu peux tester l'API directement sans rien installer :
+
+```
+GET  http://44.201.182.74:8082/actuator/health
+POST http://44.201.182.74:8081/api/auth/register
+```
+
+Exemple curl :
+
+```bash
+curl -X POST http://44.201.182.74:8081/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@bank.com","password":"Test1234!","firstName":"Test","lastName":"User"}'
+```
 
 ---
 
@@ -13,17 +32,17 @@ Client / Postman
       │
       ▼
 ┌─────────────────────┐
-│    API Gateway       │  :8080  Spring Cloud Gateway
+│    API Gateway      │  :8080  Spring Cloud Gateway
 │  OAuth2 RS (RS256)  │         Valide les tokens Keycloak
 └──────────┬──────────┘
            │ route
-     ┌─────┴──────┐
-     ▼            ▼
-┌─────────┐  ┌──────────────┐
-│  Auth   │  │ Notification │
-│ Service │  │   Service    │
-│  :8081  │  │   :8082      │
-└────┬────┘  └──────────────┘
+     ┌─────┴─────────────────────┐
+     ▼                           ▼
+┌─────────┐              ┌──────────────┐
+│  Auth   │              │ Notification │
+│ Service │              │   Service    │
+│  :8081  │              │   :8082      │
+└────┬────┘              └──────────────┘
      │ Kafka (user.registered)    ▲
      └────────────────────────────┘
      │
@@ -47,9 +66,11 @@ Client / Postman
 | Spring Cloud Gateway | 2023.0.3 | API Gateway + routing |
 | Apache Kafka | 7.5.0 | Event streaming |
 | PostgreSQL | 15 | Persistance |
-| Docker Compose | — | Infrastructure locale |
+| Docker | — | Containerisation |
+| GitLab CI/CD | — | Pipeline build / test / deploy |
+| AWS ECR | — | Registre d'images Docker |
+| AWS EC2 | t3.small | Hébergement production |
 | Swagger / OpenAPI | 3 | Documentation API |
-| Lombok | — | Réduction boilerplate |
 
 ---
 
@@ -147,6 +168,27 @@ Réponse :
 
 **RS256 vs HS256** — les tokens sont signés avec une clé asymétrique (Keycloak). L'API Gateway valide avec la clé publique sans jamais avoir la clé privée.
 
+**Variables d'environnement** — `application.yaml` utilise `${VAR:valeur_locale}` pour toutes les URLs et secrets. En local Spring utilise les valeurs par défaut. En prod Docker Compose injecte les vraies valeurs au démarrage du conteneur. Le fichier de config ne contient aucun secret.
+
+---
+
+## CI/CD et déploiement
+
+À chaque push sur `main`, le pipeline GitLab fait quatre choses dans l'ordre :
+
+1. Compile le projet avec Maven
+2. Lance les tests JUnit avec PostgreSQL réel en conteneur
+3. Build l'image Docker
+4. Pousse l'image sur AWS ECR
+
+Sur EC2, le déploiement se fait manuellement :
+
+```bash
+docker-compose pull && docker-compose down && docker-compose up -d
+```
+
+Les services (auth-service, PostgreSQL, Keycloak) tournent via Docker Compose. Les secrets sont injectés comme variables d'environnement — ils ne sont jamais dans le code ni dans GitLab.
+
 ---
 
 ## Sécurité
@@ -237,11 +279,10 @@ Tags : `v1.0.0` — authentification complète avec Keycloak
 
 ## Documentation API
 
-Swagger UI : `http://localhost:8081/swagger-ui.html`
+Swagger UI : `http://44.201.182.74:8081/swagger-ui/index.html`
 
 ---
 
 ## Auteur
 
-Achraf Ait M'Barek — Développeur Backend Java/Spring
-Projet portfolio ESN bancaire (ASTEK, Exalt, SNCF)
+Achraf Ait M'Barek — the-crazy-achraf@hotmail.fr
