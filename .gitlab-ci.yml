@@ -1,67 +1,30 @@
-# ─────────────────────────────────────────────────────────────
-# GitLab CI/CD Pipeline — bank-auth-service
-#
-# Ce fichier dit à GitLab quoi faire automatiquement
-# à chaque fois que tu fais un "git push"
-#
-# Flow :
-#   git push → GitLab lit ce fichier → lance les stages dans l'ordre
-#   build → test → docker-build
-# ─────────────────────────────────────────────────────────────
-
-# Les "stages" = les étapes du pipeline, dans l'ordre
-# Si une étape échoue → les suivantes ne se lancent pas
 stages:
-  - build        # Compiler le code Java
-  - test         # Lancer les tests unitaires
-  - docker-build # Construire l'image Docker
+  - build
+  - test
+  - docker-build
+  - push-ecr
 
-# Variables globales réutilisables dans tout le pipeline
 variables:
   MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
-  # $CI_PROJECT_DIR = dossier racine du projet sur le runner GitLab
-  # On met le cache Maven ici pour le réutiliser entre les jobs
+  IMAGE_NAME: $CI_REGISTRY_IMAGE/auth-service:$CI_COMMIT_REF_SLUG
 
-# Cache Maven — évite de retélécharger les dépendances à chaque pipeline
-# Sans cache : chaque pipeline télécharge 200MB de dépendances
-# Avec cache : réutilise ce qui est déjà téléchargé → 5x plus rapide
 cache:
   paths:
     - .m2/repository
 
-# ─────────────────────────────────────────────────────────────
-# STAGE 1 : BUILD
-# Compile le code et génère le .jar
-# ─────────────────────────────────────────────────────────────
 build:
   stage: build
-
-  # Image Docker utilisée pour ce job
-  # maven:3.9 contient Maven + Java 17 — tout ce qu'il faut pour compiler
   image: maven:3.9-eclipse-temurin-17
-
   script:
-    # mvn package = compile + package en .jar
-    # -DskipTests = on saute les tests ici (ils tournent dans le stage "test")
-    # -B = batch mode (pas d'output interactif, mieux pour CI)
     - mvn package -DskipTests -B
-
-  # artifacts = fichiers à garder après ce job pour les stages suivants
-  # Sans ça, le .jar serait perdu après le stage build
   artifacts:
     paths:
-      - target/*.jar       # Le .jar compilé
-    expire_in: 1 hour      # On garde l'artifact 1h (suffisant pour le pipeline)
-
-  # Ce job tourne uniquement sur les branches develop et main
+      - target/*.jar
+    expire_in: 1 hour
   only:
     - develop
     - main
 
-# ─────────────────────────────────────────────────────────────
-# STAGE 2 : TEST
-# Lance les tests unitaires JUnit
-# ─────────────────────────────────────────────────────────────
 test:
   stage: test
   image: maven:3.9-eclipse-temurin-17
@@ -84,41 +47,33 @@ test:
     - develop
     - main
 
-# ─────────────────────────────────────────────────────────────
-# STAGE 3 : DOCKER BUILD
-# Construit l'image Docker avec le Dockerfile
-# ─────────────────────────────────────────────────────────────
 docker-build:
   stage: docker-build
-
-  # image:docker = on utilise Docker dans Docker (DinD)
-  # Permet de lancer des commandes docker depuis le pipeline
   image: docker:24
-
   services:
-    - docker:24-dind   # Docker in Docker — nécessaire pour builder des images
-
+    - docker:24-dind
   variables:
-    # Désactive TLS pour simplifier (ok en dev/CI)
     DOCKER_TLS_CERTDIR: ""
-    # Nom de l'image Docker à créer
-    # $CI_REGISTRY_IMAGE = registry GitLab de ton projet automatiquement
-    # $CI_COMMIT_REF_SLUG = nom de la branche (ex: develop, main)
-    IMAGE_NAME: $CI_REGISTRY_IMAGE/auth-service:$CI_COMMIT_REF_SLUG
-
   script:
-    # Login dans le registry Docker de GitLab
-    # CI_REGISTRY_USER et CI_REGISTRY_PASSWORD sont injectés automatiquement par GitLab
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-
-    # Build l'image Docker avec notre Dockerfile
     - docker build -t $IMAGE_NAME .
-
-    # Push l'image dans le registry GitLab
-    # Accessible ensuite via : docker pull registry.gitlab.com/achrafaitmbarek/bank-auth-service/auth-service:develop
     - docker push $IMAGE_NAME
-
-  # Ce stage tourne uniquement sur main (pas sur chaque feature branch)
   only:
     - main
     - develop
+
+push-ecr:
+  stage: push-ecr
+  image: docker:24
+  services:
+    - docker:24-dind
+  variables:
+    DOCKER_TLS_CERTDIR: ""
+  before_script:
+    - apk add --no-cache aws-cli
+  script:
+    - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ECR_REGISTRY
+    - docker build -t $AWS_ECR_REGISTRY/$AWS_ECR_REPO:latest .
+    - docker push $AWS_ECR_REGISTRY/$AWS_ECR_REPO:latest
+  only:
+    - main
