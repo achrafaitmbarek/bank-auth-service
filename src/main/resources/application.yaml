@@ -1,50 +1,41 @@
 spring:
   application:
     name: auth-service
-
   datasource:
-    url: jdbc:postgresql://localhost:5432/authdb
-    username: admin
-    password: secret
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/authdb}
+    username: ${SPRING_DATASOURCE_USERNAME:admin}
+    password: ${SPRING_DATASOURCE_PASSWORD:secret}
     driver-class-name: org.postgresql.Driver
-
   jpa:
     hibernate:
-      ddl-auto: update        # Hibernate crée/met à jour les tables automatiquement
+      ddl-auto: update
     show-sql: true
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
-
-  # Kafka
   kafka:
-    bootstrap-servers: localhost:9092
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
-
-  # OAuth2 Resource Server : auth-service valide les tokens Keycloak
   security:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://localhost:8180/realms/bank-app
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/bank-app}
 
 server:
   port: 8081
 
-# Keycloak Admin API — pour créer des users depuis auth-service
-# Ces credentials correspondent à l'admin Keycloak défini dans docker-compose
 keycloak:
   admin:
-    server-url: http://localhost:8180
+    server-url: ${KEYCLOAK_URL:http://localhost:8180}
     realm: bank-app
     username: admin
     password: admin
     client-id: api-gateway
 
-# Swagger / OpenAPI
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
@@ -57,6 +48,8 @@ logging:
     org.springframework.security: INFO
 
 management:
+  server:
+    port: 8082
   endpoints:
     web:
       exposure:
