@@ -35,6 +35,7 @@ keycloak:
     username: admin
     password: admin
     client-id: api-gateway
+    client-secret: ${KEYCLOAK_CLIENT_SECRET:OKS1hWzolEz+lffIM1S/MmwrdX0isI8XhdBDJMIsC4o=}
 
 springdoc:
   swagger-ui:
