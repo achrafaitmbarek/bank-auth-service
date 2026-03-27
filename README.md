@@ -32,17 +32,17 @@ Client / Postman
       │
       ▼
 ┌─────────────────────┐
-│    API Gateway       │  :8080  Spring Cloud Gateway
+│    API Gateway      │  :8080  Spring Cloud Gateway
 │  OAuth2 RS (RS256)  │         Valide les tokens Keycloak
 └──────────┬──────────┘
            │ route
-     ┌─────┴──────┐
-     ▼            ▼
-┌─────────┐  ┌──────────────┐
-│  Auth   │  │ Notification │
-│ Service │  │   Service    │
-│  :8081  │  │   :8082      │
-└────┬────┘  └──────────────┘
+     ┌─────┴─────────────────────┐
+     ▼                           ▼
+┌─────────┐              ┌──────────────┐
+│  Auth   │              │ Notification │
+│ Service │              │   Service    │
+│  :8081  │              │   :8082      │
+└────┬────┘              └──────────────┘
      │ Kafka (user.registered)    ▲
      └────────────────────────────┘
      │
