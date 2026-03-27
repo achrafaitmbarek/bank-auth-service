@@ -36,6 +36,9 @@ public class KeycloakAdminService {
     @Value("${keycloak.admin.client-id}")
     private String clientId;
 
+    @Value("${keycloak.admin.client-secret}")
+    private String clientSecret;
+
 
     private String getAdminToken() {
         String tokenUrl = serverUrl + "/realms/master/protocol/openid-connect/token";
@@ -48,6 +51,7 @@ public class KeycloakAdminService {
         body.add("client_id", "admin-cli");
         body.add("username", adminUsername);
         body.add("password", adminPassword);
+
 
         HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
 
@@ -148,6 +152,7 @@ public class KeycloakAdminService {
         body.add("client_id", clientId);
         body.add("username", email);
         body.add("password", password);
+        body.add("client_secret", clientSecret);
 
         HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
 
