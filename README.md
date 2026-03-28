@@ -44,12 +44,12 @@ Client / Postman
 
 Le service est exposé sur une instance EC2. Vous pouvez tester les endpoints de santé et d'inscription directement :
 
-* **Health Check** : `GET http://44.201.182.74:8081/actuator/health`
-* **Documentation** : `http://44.201.182.74:8081/swagger-ui/index.html`
+* **Health Check** : `GET http://54.227.143.246:8081/actuator/health`
+* **Documentation** : `http://54.227.143.246:8081/swagger-ui/index.html`
 
 **Test d'inscription rapide :**
 ```bash
-curl -X POST http://44.201.182.74:8081/api/auth/register \
+curl -X POST http://54.227.143.246:8081/api/auth/register \
   -H "Content-Type: application/json" \
   -d '{"email":"dev@bank.com","password":"Test1234!","firstName":"Achraf","lastName":"Ait"}'
 ```
