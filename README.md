@@ -1,5 +1,3 @@
----
-
 # Bank Auth Service
 
 Ce microservice gère l'authentification et l'identité au sein de la **Bank Platform**. Il assure l'inscription, la persistance des profils et la communication événementielle via Kafka, tout en déléguant la gestion des tokens à Keycloak.
@@ -14,29 +12,30 @@ Le schéma ci-dessous illustre l'intégration du service dans l'écosystème. La
 
 ```text
 Client / Postman
-      │
-      ▼
-┌─────────────────────┐
-│    API Gateway      │  :8080  Spring Cloud Gateway
-│  OAuth2 RS (RS256)  │         Vérifie les signatures JWT
-└──────────┬──────────┘
-           │ Proxying
-     ┌─────┴─────────────────────┐
-     ▼                           ▼
-┌─────────┐              ┌──────────────┐
-│  Auth   │              │ Notification │
-│ Service │              │   Service    │
-│  :8081  │              │   :8082      │
-└────┬────┘              └──────────────┘
-     │ Kafka (user.registered)    ▲
-     └────────────────────────────┘
-     │
-     ▼
-┌──────────┐    ┌──────────────┐
-│ Keycloak │    │  PostgreSQL  │
-│  :8180   │    │  authdb:5432 │
-│ bank-app │    │ user_profile │
-└──────────┘    └──────────────┘
+              │
+              ▼
+    ┌─────────────────────┐
+    │    API Gateway      │  :8080  Spring Cloud Gateway
+    │  OAuth2 RS (RS256)  │         Valide les tokens JWT
+    └──────────┬──────────┘
+               │ Proxying
+         ┌─────┴─────────────────────┐
+         ▼                           ▼
+    ┌─────────┐              ┌──────────────┐
+    │  Auth   │              │ Notification │
+    │ Service │              │   Service    │
+    │  :8081  │              │   :8082      │
+    └────┬────┘              └──────────────┘
+         │ Kafka (user.registered)    ▲
+         ├────────────────────────────┘
+         │
+         │ (JPA / SQL)       
+         ▼                   
+    ┌──────────┐             ┌──────────────┐
+    │ Keycloak │────────────►│  PostgreSQL  │
+    │  :8180   │             │  authdb:5432 │
+    │ bank-app │◄────────────│ user_profile │
+    └──────────┘  (JDBC)     └──────────────┘
 ```
 
 ---
