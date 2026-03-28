@@ -3,6 +3,7 @@ stages:
   - test
   - docker-build
   - push-ecr
+  - deploy
 
 variables:
   MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository"
@@ -75,5 +76,11 @@ push-ecr:
     - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ECR_REGISTRY
     - docker build -t $AWS_ECR_REGISTRY/$AWS_ECR_REPO:latest .
     - docker push $AWS_ECR_REGISTRY/$AWS_ECR_REPO:latest
+
+trigger-infrastructure:
+  stage: deploy
+  trigger:
+    project: achrafaitmbarek/infrastructure
+    branch: main
   only:
     - main
