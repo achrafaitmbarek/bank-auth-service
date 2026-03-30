@@ -15,7 +15,7 @@ cache:
 
 build:
   stage: build
-  image: maven:3.9-eclipse-temurin-17
+  image: maven:3.9-eclipse-temurin-21
   script:
     - mvn package -DskipTests -B
   artifacts:
@@ -25,10 +25,11 @@ build:
   only:
     - develop
     - main
+    - feature/upgrade-java-21
 
 test:
   stage: test
-  image: maven:3.9-eclipse-temurin-17
+  image: maven:3.9-eclipse-temurin-21
   services:
     - postgres:15
   variables:
@@ -47,6 +48,7 @@ test:
   only:
     - develop
     - main
+    - feature/upgrade-java-21
 
 docker-build:
   stage: docker-build
@@ -62,6 +64,7 @@ docker-build:
   only:
     - main
     - develop
+    - feature/upgrade-java-21
 
 push-ecr:
   stage: push-ecr
@@ -76,6 +79,10 @@ push-ecr:
     - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ECR_REGISTRY
     - docker build -t $AWS_ECR_REGISTRY/$AWS_ECR_REPO:latest .
     - docker push $AWS_ECR_REGISTRY/$AWS_ECR_REPO:latest
+  only:
+    - main
+    - develop
+    - feature/upgrade-java-21
 
 trigger-infrastructure:
   stage: deploy
@@ -84,3 +91,5 @@ trigger-infrastructure:
     branch: main
   only:
     - main
+    - develop
+    - feature/upgrade-java-21
