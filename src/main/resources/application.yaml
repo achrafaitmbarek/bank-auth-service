@@ -32,8 +32,8 @@ keycloak:
   admin:
     server-url: ${KEYCLOAK_URL:http://localhost:8180}
     realm: bank-app
-    username: admin
-    password: admin
+    username: ${KEYCLOAK_ADMIN_USER:admin}
+    password: ${KEYCLOAK_ADMIN_PASSWORD:admin}
     client-id: api-gateway
     client-secret: ${KEYCLOAK_CLIENT_SECRET:OKS1hWzolEz+lffIM1S/MmwrdX0isI8XhdBDJMIsC4o=}
 
