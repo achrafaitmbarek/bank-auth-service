@@ -65,7 +65,7 @@ public class SecurityConfig {
         configuration.setAllowedOrigins(List.of(
                     "http://localhost:4200",
                     "http://localhost:3000",
-                    "https://heyachraf.dev",
+                    "https://www.heyachraf.dev",
                     "http://54.227.143.246:8081"
                     ));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
